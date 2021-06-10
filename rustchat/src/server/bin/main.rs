@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter};
 use std::io::Write;
 use std::process::exit;
@@ -6,52 +7,79 @@ use std::sync::mpsc;
 use std::thread::spawn;
 
 
-//temp
-
-#[derive(Clone)]
-struct User {
-    username: String
+struct Message {
+    user: String,
+    msg: String
 }
 
-struct Message {
-    user: User,
-    message: String
+impl Message {
+    fn new(user: &str, message: &str) -> Self {
+        let user = String::from(user);
+        let msg = String::from(message);
+        Message {
+            user,
+            msg 
+        }
+    }
+}
+
+enum HandlerMessage {
+    NewConnection(TcpStream),
+    CloseConnection(SocketAddr),
+    Msg(Message)
+}
+
+impl HandlerMessage {
+    fn new_message(user: &str, msg: &str) -> Self{
+        Self::Msg(Message::new(user, msg))
+    }
 }
 
 //각 클라이언트의 데이터를 받아 처리하는 스레드.
-fn message_handler(rx: mpsc::Receiver<Message>) {
+fn message_handler(rx: mpsc::Receiver<HandlerMessage>) {
+    let mut connections: HashMap<SocketAddr, TcpStream> = HashMap::new();
     println!("reading message..");
     for received in rx {
-        println!("{}: {}", received.user.username, received.message.trim());
+        match received {
+            HandlerMessage::Msg(Message { user, msg }) => {
+                println!("{}:{}", user, msg);
+                for (_,v) in connections.iter_mut() {
+                    writeln!(v, "{}:{}", user, msg).unwrap();
+                    v.flush().unwrap();
+                }
+            },
+            HandlerMessage::NewConnection(stream) => {
+                let addr = stream.peer_addr().unwrap();
+                println!("new_connection!: {}", addr);
+                connections.insert(addr, stream);
+            },
+            HandlerMessage::CloseConnection(ref addr) => {
+               let stream = connections.remove(addr).unwrap();
+               stream.shutdown(std::net::Shutdown::Both).unwrap();
+            }
+        }
     }
     println!("message handler out.");
 }
 
-fn client_handler(stream: TcpStream, tx: mpsc::Sender<Message>) {
-    let addr = stream.peer_addr().unwrap();
-    let mut user = User { username: String::new() };
+fn client_handler(stream: TcpStream, tx: mpsc::Sender<HandlerMessage>) {
+    let mut user = String::new();
     let mut reader = BufReader::new(stream.try_clone().unwrap());
-    let mut writer = BufWriter::new(stream.try_clone().unwrap());
+    tx.send(HandlerMessage::NewConnection(stream.try_clone().unwrap())).unwrap();
 
-    write!(writer, "username: ").unwrap();
-    writer.flush().unwrap();
-    reader.read_line(&mut user.username).unwrap();
-    user.username = String::from(user.username.trim());
+    reader.read_line(&mut user).unwrap();
 
-    println!("addr: {}", addr);
     loop {
         let mut message = String::new();
         reader.read_line(&mut message).unwrap();
-        tx.send(Message{user: user.clone(), 
-                        message: message.clone()}).unwrap();
-
-        if message.eq("end\n") {
+        tx.send(HandlerMessage::new_message(user.trim(), message.trim())).unwrap();
+        if message.eq("end\n") || message.len() == 0{
+            tx.send(HandlerMessage::CloseConnection(stream.peer_addr().unwrap())).unwrap();
             break;
         }
-        writer.write(message.as_bytes()).unwrap();
-        writer.flush().unwrap();
     }
 }
+
 fn main(){
     let arguments : Vec<String> = std::env::args().collect();
 
