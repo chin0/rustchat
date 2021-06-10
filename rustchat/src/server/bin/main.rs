@@ -1,38 +1,16 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, BufWriter};
+use std::io::{BufRead, BufReader};
 use std::io::Write;
 use std::process::exit;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
 use std::thread::spawn;
 
-
-struct Message {
-    user: String,
-    msg: String
-}
-
-impl Message {
-    fn new(user: &str, message: &str) -> Self {
-        let user = String::from(user);
-        let msg = String::from(message);
-        Message {
-            user,
-            msg 
-        }
-    }
-}
-
+use librustchat::data::Message;
 enum HandlerMessage {
     NewConnection(TcpStream),
     CloseConnection(SocketAddr),
     Msg(Message)
-}
-
-impl HandlerMessage {
-    fn new_message(user: &str, msg: &str) -> Self{
-        Self::Msg(Message::new(user, msg))
-    }
 }
 
 //각 클라이언트의 데이터를 받아 처리하는 스레드.
@@ -41,10 +19,11 @@ fn message_handler(rx: mpsc::Receiver<HandlerMessage>) {
     println!("reading message..");
     for received in rx {
         match received {
-            HandlerMessage::Msg(Message { user, msg }) => {
-                println!("{}:{}", user, msg);
+            HandlerMessage::Msg(msg) => {
+                let formatted = msg.to_str();
+                println!("{}", formatted);
                 for (_,v) in connections.iter_mut() {
-                    writeln!(v, "{}:{}", user, msg).unwrap();
+                    writeln!(v, "{}", formatted).unwrap();
                     v.flush().unwrap();
                 }
             },
@@ -78,7 +57,7 @@ fn client_handler(stream: TcpStream, tx: mpsc::Sender<HandlerMessage>) {
             tx.send(HandlerMessage::CloseConnection(stream.peer_addr().unwrap())).unwrap();
             break;
         }
-        tx.send(HandlerMessage::new_message(user.trim(), message.trim())).unwrap();
+        tx.send(HandlerMessage::Msg(Message::new(user.trim(), message.trim()))).unwrap();
     }
 }
 
