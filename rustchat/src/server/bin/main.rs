@@ -54,8 +54,10 @@ fn message_handler(rx: mpsc::Receiver<HandlerMessage>) {
                 connections.insert(addr, stream);
             },
             HandlerMessage::CloseConnection(ref addr) => {
-               let stream = connections.remove(addr).unwrap();
-               stream.shutdown(std::net::Shutdown::Both).unwrap();
+               let stream = connections.remove(addr);
+               if let Some(s) = stream{
+                    s.shutdown(std::net::Shutdown::Both).unwrap();
+               }
             }
         }
     }
@@ -72,11 +74,11 @@ fn client_handler(stream: TcpStream, tx: mpsc::Sender<HandlerMessage>) {
     loop {
         let mut message = String::new();
         reader.read_line(&mut message).unwrap();
-        tx.send(HandlerMessage::new_message(user.trim(), message.trim())).unwrap();
         if message.eq("end\n") || message.len() == 0{
             tx.send(HandlerMessage::CloseConnection(stream.peer_addr().unwrap())).unwrap();
             break;
         }
+        tx.send(HandlerMessage::new_message(user.trim(), message.trim())).unwrap();
     }
 }
 
