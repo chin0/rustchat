@@ -3,12 +3,22 @@ use std::{fmt, io::{Bytes, Read}};
 use crate::{data::Message, user::User};
 
 #[derive(Debug,Clone)]
-pub struct WrongPacketError;
+pub enum PacketError{
+    DisconnectError,
+    ParseError,
+}
 
 //에러 세분화 해야함.(CannatParse, WrongCommand, ...)
-impl fmt::Display for WrongPacketError {
+impl fmt::Display for PacketError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "invalid packet!")
+        match self {
+            &Self::DisconnectError => {
+                write!(f, "socket is disconnected.")
+            },
+            &Self::ParseError => {
+                write!(f, "wrong packet data.")
+            }
+        }
     }
 }
 pub enum Command {
@@ -19,11 +29,25 @@ pub enum Command {
     Message(Message), //메시지 전송
 }
 
-pub type Result<T> = std::result::Result<T, WrongPacketError>;
+pub enum Response {
+
+}
+
+pub type Result<T> = std::result::Result<T, PacketError>;
 pub trait Framing {
     //type T to byte stream data.
     fn encode_data(&self) -> Vec<u8>;
     fn decode<T: Read>(data: &mut Bytes<T>) -> Result<Self> where Self: Sized;
+}
+
+impl Framing for Response {
+    fn encode_data(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn decode<T: Read>(data: &mut Bytes<T>) -> Result<Self> where Self: Sized {
+        todo!()
+    }
 }
 
 impl Framing for Command {
@@ -52,7 +76,7 @@ impl Framing for Command {
     fn decode<T: Read>(data: &mut Bytes<T>) -> Result<Self> {
         let command_code = data.next();
         if let None = command_code {
-            return Err(WrongPacketError);
+            return Err(PacketError::DisconnectError);
         }
         match command_code {
             Some(Ok(0x30)) => {
@@ -69,7 +93,8 @@ impl Framing for Command {
                 Ok(Self::Message(decoded))
             }
             _ => {
-                Err(WrongPacketError)
+                println!("{:?}", command_code);
+                Err(PacketError::ParseError)
             }
         }
     }

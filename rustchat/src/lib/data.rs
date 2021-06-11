@@ -5,7 +5,8 @@ use std::io::Read;
 use chrono::prelude::*;
 
 use crate::protocol::Framing;
-use crate::protocol::WrongPacketError;
+use crate::protocol::PacketError;
+
 pub struct Message {
     username: String,
     time: i64,
@@ -31,6 +32,10 @@ impl Message {
         let newdate = datetime.format("%Y-%m-%d %H:%M:%S");
         format!("[{}][{}]{}", newdate, self.username, self.data)
     }
+
+    pub fn get_sender(&self) -> &str {
+        &self.username
+    }
 }
 
 
@@ -49,7 +54,7 @@ impl Framing for Message {
         encoded
     }
 
-    fn decode<T: Read>(data: &mut Bytes<T>) -> Result<Self, WrongPacketError> {
+    fn decode<T: Read>(data: &mut Bytes<T>) -> Result<Self, PacketError> {
         let datalength = u64::from_ne_bytes(
             data.take(8)
             .collect::<Result<Vec<u8>, _>>()
@@ -66,13 +71,13 @@ impl Framing for Message {
             .collect();
         let username = match username {
             Ok(result) => String::from_utf8(result).unwrap(),
-            Err(_) => return Err(WrongPacketError)
+            Err(_) => return Err(PacketError::ParseError)
         };
         let data = data.take(datalength as usize)
             .collect();
         let data = match data {
             Ok(result) => String::from_utf8(result).unwrap(),
-            Err(_) => return Err(WrongPacketError)
+            Err(_) => return Err(PacketError::ParseError)
         };
         Ok(Message {
             username,
