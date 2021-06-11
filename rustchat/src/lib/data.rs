@@ -1,9 +1,11 @@
 use std::convert::TryInto;
+use std::io::Bytes;
+use std::io::Read;
 
 use chrono::prelude::*;
-use crate::protocol::Result;
 
 use crate::protocol::Framing;
+use crate::protocol::WrongPacketError;
 pub struct Message {
     username: String,
     time: i64,
@@ -26,7 +28,7 @@ impl Message {
     pub fn to_str(&self) -> String{
         let naive = NaiveDateTime::from_timestamp(self.time, 0);
         let datetime:DateTime<Utc> = DateTime::from_utc(naive, Utc);
-        let newdate = datetime.format("%Y-%m-%d %H:%M;%S");
+        let newdate = datetime.format("%Y-%m-%d %H:%M:%S");
         format!("[{}][{}]{}", newdate, self.username, self.data)
     }
 }
@@ -47,16 +49,31 @@ impl Framing for Message {
         encoded
     }
 
-    fn decode(data: &[u8]) -> Result<Self> {
-        let datalength = u64::from_ne_bytes(data[0..8].try_into().unwrap());
-        let time = i64::from_ne_bytes(data[8..16].try_into().unwrap());
-        let first_null_position = 16 + data.iter().skip(16)
-            .position(|x| *x == 0)
-            .expect("wrong username");
-        let username = String::from_utf8(data[16..first_null_position].to_vec()).unwrap();
-        let data = String::from_utf8(
-            data[first_null_position+1..first_null_position+1+datalength as usize]
-            .to_vec()).unwrap();
+    fn decode<T: Read>(data: &mut Bytes<T>) -> Result<Self, WrongPacketError> {
+        let datalength = u64::from_ne_bytes(
+            data.take(8)
+            .collect::<Result<Vec<u8>, _>>()
+            .unwrap()
+            .try_into()
+            .unwrap());
+        let time = i64::from_ne_bytes(
+            data.take(8)
+            .collect::<Result<Vec<u8>, _>>()
+            .unwrap()
+            .try_into()
+            .unwrap());
+        let username = data.take_while(|x| !x.contains(&0))
+            .collect();
+        let username = match username {
+            Ok(result) => String::from_utf8(result).unwrap(),
+            Err(_) => return Err(WrongPacketError)
+        };
+        let data = data.take(datalength as usize)
+            .collect();
+        let data = match data {
+            Ok(result) => String::from_utf8(result).unwrap(),
+            Err(_) => return Err(WrongPacketError)
+        };
         Ok(Message {
             username,
             time,
@@ -68,7 +85,7 @@ impl Framing for Message {
 #[test]
 fn test_encode_decode() {
     let msg = Message::new("fuck", "fuckyou");
-    let Message { username, time, data} = Message::decode(&msg.encode_data()).unwrap();
+    let Message { username, time, data} = Message::decode(&mut msg.encode_data().bytes()).unwrap();
     assert_eq!(username ,msg.username);
     assert_eq!(time ,msg.time);
     assert_eq!(data ,msg.data);

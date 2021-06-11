@@ -1,8 +1,8 @@
-use std::convert::TryInto;
+use std::io::{Bytes, Read};
 
 use sha3::{Digest, Sha3_256};
 
-use crate::protocol::{Framing, Result};
+use crate::protocol::{Framing, WrongPacketError};
 
 #[derive(Debug)]
 pub struct User {
@@ -25,7 +25,7 @@ impl User {
             password
         }
     }
-    fn get_user_id(&self) {
+    pub fn get_user_id(&self) {
         unimplemented!();
     }
 }
@@ -42,14 +42,23 @@ impl Framing for User {
         encoded
     }
 
-    fn decode(data: &[u8]) -> Result<User> {
+    fn decode<T: Read>(data: &mut Bytes<T>) -> Result<User, WrongPacketError> {
         //user id-> 8byte, name.len >= 2(include null byte), password == 32
-        assert!(data.len() >= 2 + 32); 
-        let first_null_position = data.iter().position(|x| *x == 0).expect("wrong username");
-        println!("{}", first_null_position);
-        let name = String::from_utf8(data[0..first_null_position].to_vec()).unwrap();
-        let password = data[first_null_position+1..first_null_position+33].to_vec();
-        Ok(User {
+        let name = data.take_while(|x| !x.contains(&0))
+            .collect();
+        let name = match name {
+            Ok(result) => String::from_utf8(result).unwrap(),
+            Err(_) => return Err(WrongPacketError)
+        };
+
+        let password = 
+            data.collect::<Result<Vec<u8>,_>>();
+        let password = match password {
+            Ok(v) => v,
+            Err(_) => return Err(WrongPacketError)
+        };
+
+        Ok( User {
             name,
             password
         })
@@ -59,7 +68,7 @@ impl Framing for User {
 #[test]
 fn test_encode_decode() {
     let user = User::new("fuck", "password");
-    let User { name, password} = User::decode(&user.encode_data()).unwrap();
+    let User { name, password} = User::decode(&mut user.encode_data().bytes()).unwrap();
     assert_eq!(name ,user.name);
     assert_eq!(password ,user.password);
 }

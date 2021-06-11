@@ -1,5 +1,4 @@
-use core::panic;
-use std::fmt;
+use std::{fmt, io::{Bytes, Read}};
 
 use crate::{data::Message, user::User};
 
@@ -12,7 +11,7 @@ impl fmt::Display for WrongPacketError {
         write!(f, "invalid packet!")
     }
 }
-enum Command {
+pub enum Command {
     Register(User),  //회원가입
     Login(User),
     JoinChatRoom, //채팅방에 접속
@@ -24,7 +23,7 @@ pub type Result<T> = std::result::Result<T, WrongPacketError>;
 pub trait Framing {
     //type T to byte stream data.
     fn encode_data(&self) -> Vec<u8>;
-    fn decode(data: &[u8]) -> Result<Self> where Self: Sized;
+    fn decode<T: Read>(data: &mut Bytes<T>) -> Result<Self> where Self: Sized;
 }
 
 impl Framing for Command {
@@ -50,20 +49,23 @@ impl Framing for Command {
         encoded
     }
 
-    fn decode(data: &[u8]) -> Result<Self> {
-        let command_code = data[0];
+    fn decode<T: Read>(data: &mut Bytes<T>) -> Result<Self> {
+        let command_code = data.next();
+        if let None = command_code {
+            return Err(WrongPacketError);
+        }
         match command_code {
-            0x30 => {
-                let decoded = User::decode(&data[1..]).unwrap();
+            Some(Ok(0x30)) => {
+                let decoded = User::decode(data).unwrap();
                 Ok(Self::Register(decoded))
             },
-            0x31 => {
+            Some(Ok(0x31)) => {
                 //얘네도 다 Err로 바꿔줘야함.
-                let decoded = User::decode(&data[1..]).unwrap();
+                let decoded = User::decode(data).unwrap();
                 Ok(Self::Login(decoded))
             },
-            0x35 => {
-                let decoded = Message::decode(&data[1..]).unwrap();
+            Some(Ok(0x35)) => {
+                let decoded = Message::decode(data).unwrap();
                 Ok(Self::Message(decoded))
             }
             _ => {
