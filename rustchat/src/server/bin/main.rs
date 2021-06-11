@@ -1,5 +1,5 @@
 use std::collections::{HashMap, hash_map};
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::process::exit;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
@@ -14,6 +14,7 @@ struct Session {
     connected_users: HashMap<SocketAddr, User>
 }
 
+//TODO: 서버측에서는 모니터링 스레드를 만들어서 현재 무슨 세션이 연결되어 있는지 확인할수 있게 할것.
 impl Session {
     fn new() -> Self {
         let connected_peers = HashMap::new();
@@ -86,6 +87,9 @@ fn process_message(com: Command, session: &mut Session, peer: SocketAddr) {
             if let Some(username) = user {
                 if username == data.get_sender() {
                     println!("{}", data.to_str());
+                    for (_,v) in session.peer_iter_mut() {
+                        v.write(&data.encode_data()).unwrap();
+                    }
                 }
             }
         },
