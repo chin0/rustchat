@@ -30,7 +30,7 @@ impl Message {
         let naive = NaiveDateTime::from_timestamp(self.time, 0);
         let datetime:DateTime<Utc> = DateTime::from_utc(naive, Utc);
         let newdate = datetime.format("%Y-%m-%d %H:%M:%S");
-        format!("[{}][{}]{}", newdate, self.username, self.data)
+        format!("[{}][{}]{}", newdate, self.username, self.data.trim())
     }
 
     pub fn get_sender(&self) -> &str {
