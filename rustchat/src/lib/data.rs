@@ -17,7 +17,7 @@ pub struct Message {
 //TODO: Unwrap 부분 전부 Err 리턴으로 바꾸기.
 impl Message {
     pub fn new(username: &str, message: &str) -> Self {
-        let username = String::from(username);
+        let username = String::from(username.trim());
         let data = String::from(message);
         let time = Utc::now().timestamp();
         Message {

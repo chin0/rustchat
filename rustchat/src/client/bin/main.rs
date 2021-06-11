@@ -48,20 +48,20 @@ fn main() -> std::io::Result<()>{
     stdin.read_line(&mut password)?;
 
     let request = Command::Login(User::new(&username, &password));
-    println!("{:?}", conn.write(&request.encode_data())?);
-    conn.flush()?;
+    conn.write(&request.encode_data())?;
 
     let reader = conn.try_clone().unwrap().bytes();
     let handle = spawn(|| {
         display_thread(reader);
     });
 
-    let mut buf = String::new();
-        print!("message: ");
-        stdout().flush()?;
-        stdin.read_line(&mut password)?;
-        let msg = Message::new(username.trim(), &buf);
+    loop {
+        let mut buf = String::new();
+
+        stdin.read_line(&mut buf)?;
+        let msg = Message::new(&username, &buf);
         conn.write(&Command::Message(msg).encode_data())?;
         conn.flush()?;
-    Ok(())
+    }
+    //Ok(())
 }

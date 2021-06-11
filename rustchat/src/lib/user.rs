@@ -55,7 +55,7 @@ impl Framing for User {
         };
 
         let password = 
-            data.collect::<Result<Vec<u8>,_>>();
+            data.take(32).collect::<Result<Vec<u8>,_>>();
         let password = match password {
             Ok(v) => v,
             Err(_) => return Err(PacketError::ParseError)

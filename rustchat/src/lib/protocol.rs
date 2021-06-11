@@ -93,7 +93,6 @@ impl Framing for Command {
                 Ok(Self::Message(decoded))
             }
             _ => {
-                println!("{:?}", command_code);
                 Err(PacketError::ParseError)
             }
         }

@@ -80,7 +80,6 @@ fn process_message(com: Command, session: &mut Session, peer: SocketAddr) {
             session.add_user_session(peer, u);
         },
         Command::Message(data) => {
-            println!("{}", data.to_str());
             let user = session.find_user(&peer)
                 .and_then(|x| Some(x.get_username()));
             //나중에 서버 에러타입 추가해서 로그인 안된경우도 Result로 리턴하게끔..
