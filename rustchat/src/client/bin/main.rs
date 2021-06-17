@@ -9,6 +9,7 @@ use std::net::TcpStream;
 use std::process::exit;
 use std::thread::spawn;
 
+use librustchat::ui::events::{Event, Events};
 use librustchat::data::Message;
 use librustchat::protocol::Framing;
 use librustchat::protocol::Command;

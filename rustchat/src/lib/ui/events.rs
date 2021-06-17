@@ -17,6 +17,7 @@ pub enum Event<I> {
 
 /// A small event handler that wrap termion input and tick events. Each event
 /// type is handled in its own thread and returned to a common `Receiver`
+//d이 이벤트 중 패킷 관련 이벤트도 추가해야할듯 싶다.
 pub struct Events {
     rx: mpsc::Receiver<Event<Key>>,
     input_handle: thread::JoinHandle<()>,
