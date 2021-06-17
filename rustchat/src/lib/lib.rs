@@ -5,3 +5,4 @@ pub mod user;
 pub mod chatroom;
 pub mod data;
 pub mod protocol;
+pub mod ui_event;
