@@ -20,6 +20,7 @@ path = "src/lib/lib.rs"
 [dependencies]
 tui = "0.15"
 termion = "1.5"
+unicode-width = "0.1.5"
 chrono = "0.4.19"
 rusqlite = "*"
 sha3 = "0.9.1"
