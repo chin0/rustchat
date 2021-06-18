@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::process::exit;
 use std::thread::spawn;
+use std::sync::{Arc, Mutex};
 use unicode_width::UnicodeWidthStr;
 
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
@@ -28,10 +29,11 @@ use librustchat::protocol::Framing;
 use librustchat::protocol::Command;
 use librustchat::user::User;
 
-fn display_thread(mut stream: Bytes<TcpStream>) {
+fn msgread_thread(mut stream: Bytes<TcpStream>, app: Arc<Mutex<App>>) {
     loop {
         let data = Message::decode(&mut stream).unwrap();
-        println!("{}", data.to_str());
+        let mut app = app.lock().unwrap();
+        app.messages.push(data);
     }
 }
 
@@ -42,25 +44,13 @@ enum InputMode {
 
 /// App holds the state of the application
 struct App {
-    /// Current value of the input box
-    input: String,
-    /// Current input mode
-    input_mode: InputMode,
-    /// History of recorded messages
-    messages: Vec<String>,
+    username: String,
+    messages: Vec<Message>,
+    network: TcpStream
 }
 
-impl Default for App {
-    fn default() -> App {
-        App {
-            input: String::new(),
-            input_mode: InputMode::Normal,
-            messages: Vec::new(),
-        }
-    }
-}
-
-fn start_ui() -> Result<(), Box<dyn Error>>{
+//1. UI 분리.
+fn start_ui(app: Arc<Mutex<App>>) -> Result<(), Box<dyn Error>>{
     let stdout = io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
     let stdout = AlternateScreen::from(stdout);
@@ -69,10 +59,10 @@ fn start_ui() -> Result<(), Box<dyn Error>>{
 
     // Setup event handlers
     let mut events = Events::new();
+    let mut input_buf = String::new();
+    let mut input_mode = InputMode::Normal;
 
     // Create default app state
-    let mut app = App::default();
-
     loop {
         // Draw UI
         terminal.draw(|f| {
@@ -89,7 +79,7 @@ fn start_ui() -> Result<(), Box<dyn Error>>{
                 )
                 .split(f.size());
 
-            let (msg, style) = match app.input_mode {
+            let (msg, style) = match input_mode {
                 InputMode::Normal => (
                     vec![
                         Span::raw("Press "),
@@ -116,14 +106,14 @@ fn start_ui() -> Result<(), Box<dyn Error>>{
             let help_message = Paragraph::new(text);
             f.render_widget(help_message, chunks[0]);
 
-            let input = Paragraph::new(app.input.as_ref())
-                .style(match app.input_mode {
+            let input = Paragraph::new(input_buf.as_ref())
+                .style(match input_mode {
                     InputMode::Normal => Style::default(),
                     InputMode::Editing => Style::default().fg(Color::Yellow),
                 })
                 .block(Block::default().borders(Borders::ALL).title("Input"));
             f.render_widget(input, chunks[1]);
-            match app.input_mode {
+            match input_mode {
                 InputMode::Normal =>
                     // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
                     {}
@@ -132,19 +122,19 @@ fn start_ui() -> Result<(), Box<dyn Error>>{
                     // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
                     f.set_cursor(
                         // Put cursor past the end of the input text
-                        chunks[1].x + app.input.width() as u16 + 1,
+                        chunks[1].x + input_buf.width() as u16 + 1,
                         // Move one line down, from the border to the input line
                         chunks[1].y + 1,
                     )
                 }
             }
 
-            let messages: Vec<ListItem> = app
+            let messages: Vec<ListItem> = app.lock().unwrap()
                 .messages
                 .iter()
                 .enumerate()
-                .map(|(i, m)| {
-                    let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
+                .map(|(_, m)| {
+                    let content = vec![Spans::from(Span::raw(m.to_str()))];
                     ListItem::new(content)
                 })
                 .collect();
@@ -155,10 +145,10 @@ fn start_ui() -> Result<(), Box<dyn Error>>{
 
         // Handle input
         if let Event::Input(input) = events.next()? {
-            match app.input_mode {
+            match input_mode {
                 InputMode::Normal => match input {
                     Key::Char('e') => {
-                        app.input_mode = InputMode::Editing;
+                        input_mode = InputMode::Editing;
                         events.disable_exit_key();
                     }
                     Key::Char('q') => {
@@ -168,16 +158,19 @@ fn start_ui() -> Result<(), Box<dyn Error>>{
                 },
                 InputMode::Editing => match input {
                     Key::Char('\n') => {
-                        app.messages.push(app.input.drain(..).collect());
+                        let buf = input_buf.drain(..).collect::<String>();
+                        let msg = Message::new(&app.lock().unwrap().username, &buf);
+                        app.lock().unwrap().network.write(&Command::Message(msg).encode_data())?;
+                        app.lock().unwrap().network.flush()?;
                     }
                     Key::Char(c) => {
-                        app.input.push(c);
+                        input_buf.push(c);
                     }
                     Key::Backspace => {
-                        app.input.pop();
+                        input_buf.pop();
                     }
                     Key::Esc => {
-                        app.input_mode = InputMode::Normal;
+                        input_mode = InputMode::Normal;
                         events.enable_exit_key();
                     }
                     _ => {}
@@ -205,7 +198,6 @@ fn main() -> Result<(), Box<dyn Error>>{
     
     let mut conn = TcpStream::connect(SocketAddr::from((ip, port)))?;
     
-    /*
     let mut username = String::new();
     let mut password = String::new();
     print!("username: ");
@@ -218,21 +210,19 @@ fn main() -> Result<(), Box<dyn Error>>{
     let request = Command::Login(User::new(&username, &password));
     conn.write(&request.encode_data())?;
 
+    let app = Arc::new(Mutex::new(App {
+        username,
+        messages: Vec::new(),
+        network: conn.try_clone().unwrap()
+    }));
+
     let reader = conn.try_clone().unwrap().bytes();
-    let handle = spawn(|| {
-        display_thread(reader);
+    let app_ref = Arc::clone(&app);
+    spawn(|| {
+        //reader를 빼고 app의 network에서 가져오는쪽으로 할까..
+        msgread_thread(reader, app_ref);
     });
 
-    loop {
-        let mut buf = String::new();
-
-        stdin.read_line(&mut buf)?;
-        let msg = Message::new(&username, &buf);
-        conn.write(&Command::Message(msg).encode_data())?;
-        conn.flush()?;
-    }
-    //Ok(())
-    */
-    start_ui()?;
+    start_ui(Arc::clone(&app))?;
     Ok(())
 }

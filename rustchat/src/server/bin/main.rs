@@ -65,7 +65,7 @@ impl Session {
         }
         let s = self.connected_peers.remove(&peer);
         if let Some(s) = s{
-                s.shutdown(std::net::Shutdown::Both).unwrap();
+                s.shutdown(std::net::Shutdown::Both);
         }
     }
 }
