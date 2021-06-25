@@ -10,7 +10,8 @@ use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::process::exit;
 use std::thread::spawn;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 use unicode_width::UnicodeWidthStr;
 
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
@@ -32,7 +33,7 @@ use librustchat::user::User;
 fn msgread_thread(mut stream: Bytes<TcpStream>, app: Arc<Mutex<App>>) {
     loop {
         let data = Message::decode(&mut stream).unwrap();
-        let mut app = app.lock().unwrap();
+        let mut app = app.lock();
         app.messages.push(data);
     }
 }
@@ -129,7 +130,7 @@ fn start_ui(app: Arc<Mutex<App>>) -> Result<(), Box<dyn Error>>{
                 }
             }
 
-            let messages: Vec<ListItem> = app.lock().unwrap()
+            let messages: Vec<ListItem> = app.lock()
                 .messages
                 .iter()
                 .enumerate()
@@ -159,9 +160,9 @@ fn start_ui(app: Arc<Mutex<App>>) -> Result<(), Box<dyn Error>>{
                 InputMode::Editing => match input {
                     Key::Char('\n') => {
                         let buf = input_buf.drain(..).collect::<String>();
-                        let msg = Message::new(&app.lock().unwrap().username, &buf);
-                        app.lock().unwrap().network.write(&Command::Message(msg).encode_data())?;
-                        app.lock().unwrap().network.flush()?;
+                        let msg = Message::new(&app.lock().username, &buf);
+                        app.lock().network.write(&Command::Message(msg).encode_data())?;
+                        app.lock().network.flush()?;
                     }
                     Key::Char(c) => {
                         input_buf.push(c);
