@@ -24,11 +24,11 @@ use tui::{
     Terminal,
 };
 
-use librustchat::ui::events::{Event, Events};
-use librustchat::data::Message;
-use librustchat::protocol::Framing;
-use librustchat::protocol::Command;
-use librustchat::user::User;
+use rustchat::ui::events::{Event, Events};
+use rustchat::data::Message;
+use rustchat::protocol::Framing;
+use rustchat::protocol::Command;
+use rustchat::user::User;
 
 fn msgread_thread(mut stream: Bytes<TcpStream>, app: Arc<Mutex<App>>) {
     loop {

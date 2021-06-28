@@ -5,9 +5,9 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
 use std::thread::spawn;
 
-use librustchat::protocol::{Command, Framing};
-use librustchat::protocol::PacketError;
-use librustchat::user::User;
+use rustchat::protocol::{Command, Framing};
+use rustchat::protocol::PacketError;
+use rustchat::user::User;
 
 struct Session {
     connected_peers: HashMap<SocketAddr, TcpStream>,
